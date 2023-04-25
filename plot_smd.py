@@ -1,6 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import os 
+import time
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import pdb
+from typing import Callable
 
 class Measurement():
 
@@ -19,17 +24,42 @@ class Measurement():
     def reverse_check(self):
         self.calculate_mnk()
         if self.coefficients[0] > 0:
-            self.reverse = False
+            self.isreverse = False
         else:
-            self.reverse = True
+            self.isreverse = True
 
     def calculate_mnk(self):
         self.coefficients = np.polyfit(self.step_array,self.z_array , 1)
-        
 
-class Measurements_storage():
+    def reverse(self):
+        #self.step_array = np.flip(self.step_array)
+        self.pmf_array = np.flip(self.pmf_array)
+        self.z_array = np.flip(self.z_array) 
+        self.reverse_check()
+
+    def form(self, reference_coefficients):
+        delta = (self.coefficients[1] -  reference_coefficients[1])/self.coefficients[0]
+        self.step_array = self.step_array + delta   
+        self.calculate_mnk()
+
+class Comparator:
+    def __init__(self, func: Callable[[Measurement, Measurement], Measurement]):
+        self.func = func
+
+class MeasurementComparator:
+    MIN_BOTTOM = 'MIN_BOTTOM'
+
+COMPARATORS = {
+    MeasurementComparator.MIN_BOTTOM: Comparator(
+        lambda current, measure: current if current.z_array[0] <  measure.z_array[0] else measure
+    )
+}
+
+class Measurements_Storage():
     def __init__(self, path):
         self.load_all_data(path)
+        self.isCheckReverse = False
+        self.isCheckForward = True
         
     def load_all_data(self, path):
         with os.scandir(path) as entries:
@@ -39,35 +69,40 @@ class Measurements_storage():
                 measure = Measurement(entry.name, path)
                 self.measurement_list.append(measure)
 
+    def find(self, comparator: Comparator):
+        current_value = next(iter(self)) 
+        for measure in self:
+            current_value = comparator.func(current_value, measure)
+        return current_value
+
+
+    def normalize(self):
+        measure_reference = self.find(COMPARATORS[MeasurementComparator.MIN_BOTTOM])
+        for measure in self:
+            measure.form(measure_reference.coefficients)
+        
+
     def __iter__(self):
         for i in self.measurement_list:
-            yield i 
-
-    def old_code():
-        #нормирование данных
-        max_range = min(z1[0], z2[-1], z3[-1])  
-        min_range = max(z1[-1], z2[0], z3[0])  
-        print(z1)
-        mask = np.logical_and(z1 >= min_range, z1 <= max_range)
-        print(mask)
+            if (i.isreverse and self.isCheckReverse) or  (not i.isreverse and self.isCheckForward):
+                yield i 
 
 
-measurements = Measurements_storage('data/')
-
+storage = Measurements_Storage('data/')
+storage.normalize()
 
 
 # Создание графиков
-fig, ax = plt.subplots(1, 2, figsize=(12, 6))
+fig, ax = plt.subplots(1, 3, figsize=(12, 6))
 
 def plot_measures():
-    for measure in measurements:
-            print(measure)
-        #if not measure.reverse:
+    for measure in storage:
             ax[0].plot(measure.step_array, measure.pmf_array , label=measure.name)
             ax[1].plot(measure.step_array, measure.z_array , label=measure.name)
+            ax[2].plot(measure.z_array, measure.pmf_array , label=measure.name)
         
 def plot_one_measure(number):
-    measure =  next(measurements)
+    measure =  next(iter(storage))
     ax[0].plot(measure.step_array, measure.pmf_array , label=measure.name)
     ax[1].plot(measure.step_array, measure.z_array , label=measure.name)
 
@@ -79,6 +114,10 @@ ax[0].legend()
 ax[1].set_xlabel("step")
 ax[1].set_ylabel("Z")
 ax[1].legend()
-
+ax[2].set_xlabel("Z")
+ax[2].set_ylabel("PMF")
+ax[2].legend()
 # Отображение графиков
 plt.show()
+
+
