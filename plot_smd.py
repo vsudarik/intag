@@ -34,7 +34,7 @@ class Measurement():
     def reverse_dict(self):
         if self.isreverse:
             self.pmf_array_straight = np.flip(self.pmf_array)
-            self.z_array_straight = np.flip(self.z_array) 
+            self.z_array_straight = np.flip(self.z_array_straight) 
         else:
             self.pmf_array_straight = self.pmf_array
 
@@ -53,7 +53,10 @@ class Measurement():
         self.z_array_straight = self.step_array * self.coefficients[0] + self.coefficients[1]
 
     def fit(self, bottom_border, top_border):
-        pass
+        start_index = np.searchsorted(self.z_array_straight, bottom_border, side='left')
+        end_index = np.searchsorted(self.z_array_straight, top_border, side='right')
+        self.z_array_straight = self.z_array_straight[start_index:end_index]
+        self.pmf_array_straight = self.pmf_array_straight[start_index:end_index]
 
 class Comparator:
     def __init__(self, func: Callable[[Measurement, Measurement], Measurement]):
@@ -106,9 +109,11 @@ class Measurements_Storage():
         return current_value
 
     def fit(self):
-        bottom_border =  self.find(COMPARATORS[MeasurementComparator.MAX_BOTTOM_STRAIGHT])
-        top_border =  self.find(COMPARATORS[MeasurementComparator.MIN_TOP_STRAIGHT])
-        print(bottom_border.z_array_straight[0], top_border.z_array_straight[-1]) 
+        bottom_border =  self.find(COMPARATORS[MeasurementComparator.MAX_BOTTOM_STRAIGHT]).z_array_straight[0]
+        top_border =  self.find(COMPARATORS[MeasurementComparator.MIN_TOP_STRAIGHT]).z_array_straight[-1]
+        print(bottom_border, top_border) 
+        for measure in self:
+            measure.fit(bottom_border, top_border)
 
         
 
