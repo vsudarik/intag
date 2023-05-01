@@ -31,6 +31,13 @@ class Measurement():
     def calculate_mnk(self):
         self.coefficients = np.polyfit(self.step_array,self.z_array , 1)
 
+    def reverse_dict(self):
+        if self.isreverse:
+            self.pmf_array_straight = np.flip(self.pmf_array)
+            self.z_array_straight = np.flip(self.z_array) 
+        else:
+            self.pmf_array_straight = self.pmf_array
+
     def reverse(self):
         #self.step_array = np.flip(self.step_array)
         self.pmf_array = np.flip(self.pmf_array)
@@ -42,23 +49,46 @@ class Measurement():
         self.step_array = self.step_array + delta   
         self.calculate_mnk()
 
+    def calculate_straight_z(self):
+        self.z_array_straight = self.step_array * self.coefficients[0] + self.coefficients[1]
+
+    def fit(self, bottom_border, top_border):
+        pass
+
 class Comparator:
     def __init__(self, func: Callable[[Measurement, Measurement], Measurement]):
         self.func = func
 
 class MeasurementComparator:
     MIN_BOTTOM = 'MIN_BOTTOM'
+    MAX_BOTTOM = 'MAX_BOTTOM'
+    MAX_TOP = 'MAX_TOP'
+    MAX_BOTTOM_STRAIGHT = 'MAX_BOTTOM_STRAIGHT'
+    MIN_TOP_STRAIGHT = 'MIN_TOP_STRAIGHT'
+
 
 COMPARATORS = {
     MeasurementComparator.MIN_BOTTOM: Comparator(
         lambda current, measure: current if current.z_array[0] <  measure.z_array[0] else measure
-    )
+    ),
+    MeasurementComparator.MAX_BOTTOM: Comparator(
+        lambda current, measure: current if current.z_array[0] >  measure.z_array[0] else measure
+    ),
+    MeasurementComparator.MAX_TOP: Comparator(
+        lambda current, measure: current if current.z_array[-1] >  measure.z_array[-1] else measure
+    ),
+    MeasurementComparator.MAX_BOTTOM_STRAIGHT: Comparator(
+        lambda current, measure: current if current.z_array_straight[0] >  measure.z_array_straight[0] else measure 
+        ),
+    MeasurementComparator.MIN_TOP_STRAIGHT: Comparator(
+        lambda current, measure: current if current.z_array_straight[-1] <  measure.z_array_straight[-1] else measure 
+        )
 }
 
 class Measurements_Storage():
     def __init__(self, path):
         self.load_all_data(path)
-        self.isCheckReverse = False
+        self.isCheckReverse = True
         self.isCheckForward = True
         
     def load_all_data(self, path):
@@ -75,12 +105,26 @@ class Measurements_Storage():
             current_value = comparator.func(current_value, measure)
         return current_value
 
+    def fit(self):
+        bottom_border =  self.find(COMPARATORS[MeasurementComparator.MAX_BOTTOM_STRAIGHT])
+        top_border =  self.find(COMPARATORS[MeasurementComparator.MIN_TOP_STRAIGHT])
+        print(bottom_border.z_array_straight[0], top_border.z_array_straight[-1]) 
+
+        
+
+    def reverse(self):
+        for measure in self:
+            if measure.isreverse:
+                measure.reverse()
+
 
     def normalize(self):
-        measure_reference = self.find(COMPARATORS[MeasurementComparator.MIN_BOTTOM])
+        #measure_reference = self.find(COMPARATORS[MeasurementComparator.MIN_BOTTOM])
         for measure in self:
-            measure.form(measure_reference.coefficients)
-        
+            #measure.form(measure_reference.coefficients)
+            measure.calculate_straight_z()
+            measure.reverse_dict()
+    
 
     def __iter__(self):
         for i in self.measurement_list:
@@ -89,7 +133,9 @@ class Measurements_Storage():
 
 
 storage = Measurements_Storage('data/')
+#storage.reverse()
 storage.normalize()
+storage.fit()
 
 
 # Создание графиков
@@ -99,7 +145,7 @@ def plot_measures():
     for measure in storage:
             ax[0].plot(measure.step_array, measure.pmf_array , label=measure.name)
             ax[1].plot(measure.step_array, measure.z_array , label=measure.name)
-            ax[2].plot(measure.z_array, measure.pmf_array , label=measure.name)
+            ax[2].plot(measure.z_array_straight, measure.pmf_array_straight , label=measure.name)
         
 def plot_one_measure(number):
     measure =  next(iter(storage))
